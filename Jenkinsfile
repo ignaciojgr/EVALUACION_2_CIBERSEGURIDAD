@@ -20,13 +20,16 @@ pipeline {
                 echo 'Etapa de Construcción - Preparando la aplicación...'
                 
                 sh '''
+                    # Eliminar base de datos anterior si existe
+                    rm -f database.db
+                    
                     python --version
                     pip install --upgrade pip
                     pip install -r requirements.txt
                     python create_db.py
                 '''
                 
-                echo 'Construcción completada exitosamente'
+                echo '✅ Construcción completada exitosamente'
                 
                 // Archivar la base de datos creada
                 stash includes: 'database.db', name: 'database'
