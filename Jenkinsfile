@@ -74,17 +74,16 @@ pipeline {
                     // 1. Crear directorio de reportes con permisos
                     sh '''
                         mkdir -p reportes_zap
-                        chmod -R 777 reportes_zap
+                        chmod 777 reportes_zap
                     '''
                     
                     // 2. Iniciar la aplicación Flask en background usando venv
-                    echo 'Iniciando aplicación para escaneo...'
+                    echo 'Iniciando aplicacion...'
                     sh '''
                         # Crear entorno virtual (si no existe)
                         python3 -m venv venv
                         
                         # Instalar dependencias usando el pip del venv
-                        # Esto evita el error "externally-managed-environment"
                         ./venv/bin/pip install -q -r requirements.txt
                         
                         # Iniciar la app usando el python del venv
@@ -92,34 +91,40 @@ pipeline {
                         
                         echo "Esperando 10 segundos para que la app inicie..."
                         sleep 10
-                        
-                        # Verificar que la app esté corriendo
-                        curl -f http://localhost:5000/ && echo "App esta corriendo" || echo "Advertencia: App puede no estar lista"
                     '''
                     
-                    // 3. Ejecutar ZAP con permisos de root y network host
+                    // 3. Limpiar cualquier contenedor ZAP previo
+                    sh 'docker rm -f zap-scan || true'
+                    
+                    // 4. Ejecutar ZAP sin montar volumen
+                    // Los reportes se copian del contenedor después
                     try {
                         sh '''
-                            docker run --rm --network host -u 0 \
-                                -v $(pwd)/reportes_zap:/zap/wrk:rw \
+                            docker run --name zap-scan --network host -u 0 \
                                 ghcr.io/zaproxy/zaproxy:stable \
                                 zap-baseline.py -t http://localhost:5000 \
-                                -r reporte_zap.html \
-                                -J reporte_zap.json \
-                                -w reporte_zap.md \
+                                -r report.html \
+                                -J report.json \
                                 -I
                         '''
                     } catch (Exception e) {
-                        echo "ZAP encontró vulnerabilidades, pero continuamos el pipeline."
+                        echo "ZAP scan finalizado (posiblemente con alertas)"
                     }
                     
-                    // 4. Mostrar resultados
+                    // 5. Copiar reportes del contenedor a Jenkins
                     sh '''
+                        echo "Copiando reportes desde el contenedor..."
+                        docker cp zap-scan:/zap/wrk/report.html reportes_zap/reporte_zap.html
+                        docker cp zap-scan:/zap/wrk/report.json reportes_zap/reporte_zap.json
+                        
+                        # Limpiar el contenedor
+                        docker rm -f zap-scan
+                        
                         echo "Escaneo completado. Archivos generados:"
                         ls -lah reportes_zap/
                     '''
                     
-                    // 5. Matar proceso Flask
+                    // 6. Matar proceso Flask
                     sh '''
                         pkill -f "./venv/bin/python vulnerable_app.py" || true
                         echo "Aplicacion Flask detenida"
