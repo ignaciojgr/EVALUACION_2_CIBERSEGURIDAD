@@ -1,0 +1,121 @@
+# Configuración de Dependabot para gestión automática de dependencias
+# Escanea vulnerabilidades y actualiza dependencias automáticamente
+
+version: 2
+updates:
+  # Monitorear dependencias de pip (Python)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Santiago"
+    
+    # Configuración de Pull Requests
+    open-pull-requests-limit: 5
+    
+    # Prefijo para los commits y PRs
+    commit-message:
+      prefix: "[Dependabot]"
+      prefix-development: "[Dependabot-Dev]"
+      include: "scope"
+    
+    # Etiquetas para los PRs
+    labels:
+      - "dependencies"
+      - "security"
+      - "automated"
+    
+    # Revisores automáticos
+    reviewers:
+      - "ignaciojgr"
+    
+    # Asignación automática
+    assignees:
+      - "ignaciojgr"
+    
+    # Permitir actualizaciones de versión
+    versioning-strategy: increase
+    
+    # Agrupar actualizaciones por tipo
+    groups:
+      security-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "security"
+      
+      production-dependencies:
+        patterns:
+          - "flask"
+          - "bcrypt"
+          - "gunicorn"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      development-dependencies:
+        patterns:
+          - "pytest"
+          - "bandit"
+          - "safety"
+          - "flake8"
+        update-types:
+          - "minor"
+          - "patch"
+    
+    # Ignorar actualizaciones específicas si es necesario
+    # ignore:
+    #   - dependency-name: "flask"
+    #     versions: ["3.x"]
+
+  # Monitorear Dockerfile para actualizaciones de imágenes base
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "America/Santiago"
+    
+    open-pull-requests-limit: 3
+    
+    commit-message:
+      prefix: "[Dependabot-Docker]"
+    
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+    
+    reviewers:
+      - "ignaciojgr"
+    
+    assignees:
+      - "ignaciojgr"
+
+  # Monitorear GitHub Actions si se agregan en el futuro
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "11:00"
+      timezone: "America/Santiago"
+    
+    open-pull-requests-limit: 2
+    
+    commit-message:
+      prefix: "[Dependabot-Actions]"
+    
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    
+    reviewers:
+      - "ignaciojgr"
+    
+    assignees:
+      - "ignaciojgr"
