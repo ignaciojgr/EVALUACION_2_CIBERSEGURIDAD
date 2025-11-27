@@ -16,7 +16,7 @@ pytest==7.4.3
 pytest-flask==1.3.0
 
 # Herramientas de análisis de seguridad
-bandit==1.7.5
+bandit==1.9.2
 safety==2.3.5
 
 # Calidad de código
