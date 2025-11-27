@@ -62,7 +62,7 @@ pipeline {
         }
         
         stage('Pruebas de Seguridad - OWASP ZAP') {
-            agent any // Usar el nodo principal de Jenkins que tiene Docker
+            agent any
             
             steps {
                 echo 'Iniciando pruebas de seguridad con OWASP ZAP...'
@@ -71,76 +71,55 @@ pipeline {
                 unstash 'database'
                 
                 script {
-                    // Crear directorio para reportes con permisos correctos
+                    // 1. Crear directorio de reportes con permisos
                     sh '''
                         mkdir -p reportes_zap
-                        chmod 777 reportes_zap
+                        chmod -R 777 reportes_zap
                     '''
                     
-                    // Iniciar la aplicación Flask en un contenedor Docker con red compartida
+                    // 2. Iniciar la aplicación Flask en background
+                    echo 'Iniciando aplicación para escaneo...'
                     sh '''
-                        # Detener cualquier contenedor previo
-                        docker stop flask-app 2>/dev/null || true
-                        docker rm flask-app 2>/dev/null || true
+                        # Instalar dependencias y iniciar app en background
+                        pip3 install -q -r requirements.txt
+                        nohup python3 vulnerable_app.py > app.log 2>&1 &
                         
-                        # Obtener el workspace path desde el contenedor de Jenkins
-                        WORKSPACE_PATH=$(docker inspect jenkins --format '{{ range .Mounts }}{{ if eq .Destination "/var/jenkins_home" }}{{ .Source }}{{ end }}{{ end }}')/workspace/pipeline-seguridad
+                        echo "Esperando 10 segundos para que la app inicie..."
+                        sleep 10
                         
-                        echo "Workspace path: $WORKSPACE_PATH"
-                        
-                        # Iniciar aplicación en contenedor con volumen correcto
-                        docker run -d --name flask-app \
-                            --network host \
-                            -v "$WORKSPACE_PATH":/app \
-                            -w /app \
-                            python:3.11-slim \
-                            sh -c "ls -la && pip install -q -r requirements.txt && python vulnerable_app.py"
-                        
-                        # Esperar a que la aplicación inicie
-                        echo "Esperando que Flask inicie..."
-                        sleep 15
-                        
-                        # Verificar múltiples veces
-                        for i in 1 2 3 4 5; do
-                            if curl -f http://localhost:5000/ 2>/dev/null; then
-                                echo "Flask está respondiendo"
-                                break
-                            fi
-                            echo "Intento $i/5 - esperando..."
-                            sleep 3
-                        done
+                        # Verificar que la app esté corriendo
+                        curl -f http://localhost:5000/ || echo "Advertencia: App puede no estar lista"
                     '''
                     
-                    // Mostrar logs de Flask para debug
-                    sh 'docker logs flask-app || true'
+                    // 3. Ejecutar ZAP con permisos de root y network host
+                    try {
+                        sh '''
+                            docker run --rm --network host -u 0 \
+                                -v $(pwd)/reportes_zap:/zap/wrk:rw \
+                                ghcr.io/zaproxy/zaproxy:stable \
+                                zap-baseline.py -t http://localhost:5000 \
+                                -r reporte_zap.html \
+                                -J reporte_zap.json \
+                                -w reporte_zap.md \
+                                -I
+                        '''
+                    } catch (Exception e) {
+                        echo "ZAP encontró vulnerabilidades, pero continuamos el pipeline."
+                    }
                     
-                    // Ejecutar ZAP usando Docker con permisos correctos
+                    // 4. Mostrar resultados
                     sh '''
-                        # Obtener el workspace path
-                        WORKSPACE_PATH=$(docker inspect jenkins --format '{{ range .Mounts }}{{ if eq .Destination "/var/jenkins_home" }}{{ .Source }}{{ end }}{{ end }}')/workspace/pipeline-seguridad
-                        
-                        # Cambiar permisos del directorio de reportes
-                        chmod -R 777 "$WORKSPACE_PATH/reportes_zap"
-                        
-                        docker run --rm \
-                            --network host \
-                            -v "$WORKSPACE_PATH/reportes_zap":/zap/wrk/:rw \
-                            ghcr.io/zaproxy/zaproxy:stable \
-                            zap-baseline.py -t http://127.0.0.1:5000 \
-                            -r reporte_zap.html \
-                            -J reporte_zap.json \
-                            -w reporte_zap.md \
-                            -I || true
+                        echo "Escaneo completado. Archivos generados:"
+                        ls -lah reportes_zap/
                     '''
                     
-                    // Detener contenedor de Flask
+                    // 5. Matar proceso Flask
                     sh '''
-                        docker logs flask-app
-                        docker stop flask-app 2>/dev/null || true
-                        docker rm flask-app 2>/dev/null || true
+                        pkill -f "python3 vulnerable_app.py" || true
+                        echo "Aplicación Flask detenida"
                     '''
                     
-                    echo 'Escaneo de seguridad OWASP ZAP completado'
+                    echo 'Pruebas de seguridad OWASP ZAP completadas'
                 }
                 
                 // Archivar reportes de seguridad
