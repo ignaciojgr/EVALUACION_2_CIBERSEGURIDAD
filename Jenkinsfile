@@ -1,11 +1,7 @@
 pipeline {
-    agent any
+    agent none // No usar el nodo principal de Jenkins por defecto
     
     environment {
-        // Configuración del entorno Python
-        PYTHON_VERSION = '3.11'
-        VENV_DIR = 'venv'
-        
         // Configuración de la aplicación
         FLASK_ENV = 'testing'
         FLASK_DEBUG = 'False'
@@ -13,100 +9,84 @@ pipeline {
     
     stages {
         stage('Construcción') {
+            // Ejecutar esta etapa dentro de un contenedor Python
+            agent {
+                docker { 
+                    image 'python:3.11-slim'
+                    args '-u root:root'
+                }
+            }
             steps {
                 echo 'Etapa de Construcción - Preparando la aplicación...'
                 
-                script {
-                    // Crear entorno virtual
-                    if (isUnix()) {
-                        sh '''
-                            python3 -m venv ${VENV_DIR}
-                            . ${VENV_DIR}/bin/activate
-                            pip install --upgrade pip
-                            pip install -r requirements.txt
-                            python create_db.py
-                        '''
-                    } else {
-                        bat '''
-                            python -m venv %VENV_DIR%
-                            call %VENV_DIR%\\Scripts\\activate.bat
-                            pip install --upgrade pip
-                            pip install -r requirements.txt
-                            python create_db.py
-                        '''
-                    }
-                    
-                    echo 'Construcción completada exitosamente'
-                }
+                sh '''
+                    python --version
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    python create_db.py
+                '''
+                
+                echo 'Construcción completada exitosamente'
+                
+                // Archivar la base de datos creada
+                stash includes: 'database.db', name: 'database'
             }
         }
         
         stage('Pruebas') {
+            // Ejecutar esta etapa dentro de un contenedor Python
+            agent {
+                docker { 
+                    image 'python:3.11-slim'
+                    args '-u root:root'
+                }
+            }
             steps {
                 echo 'Etapa de Pruebas - Ejecutando tests...'
                 
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            . ${VENV_DIR}/bin/activate
-                            python --version
-                            pip list
-                        '''
-                    } else {
-                        bat '''
-                            call %VENV_DIR%\\Scripts\\activate.bat
-                            python --version
-                            pip list
-                        '''
-                    }
-                    
-                    echo 'Pruebas completadas exitosamente'
-                }
+                // Recuperar la base de datos
+                unstash 'database'
+                
+                sh '''
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    python --version
+                    pip list
+                '''
+                
+                echo 'Pruebas completadas exitosamente'
             }
         }
         
         stage('Despliegue') {
+            // Ejecutar esta etapa dentro de un contenedor Python
+            agent {
+                docker { 
+                    image 'python:3.11-slim'
+                    args '-u root:root'
+                }
+            }
             steps {
                 echo 'Etapa de Despliegue - Desplegando la aplicación...'
                 
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            . ${VENV_DIR}/bin/activate
-                            echo "Aplicación lista para desplegar"
-                        '''
-                    } else {
-                        bat '''
-                            call %VENV_DIR%\\Scripts\\activate.bat
-                            echo "Aplicación lista para desplegar"
-                        '''
-                    }
-                    
-                    echo 'Despliegue completado exitosamente'
-                }
+                // Recuperar la base de datos
+                unstash 'database'
+                
+                sh '''
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    echo "Aplicación lista para desplegar"
+                    echo "Información del entorno:"
+                    python --version
+                    echo "Total de paquetes instalados: $(pip list | wc -l)"
+                '''
+                
+                echo 'Despliegue completado exitosamente'
             }
         }
     }
     
     post {
-        always {
-            echo 'Limpiando recursos...'
-            
-            script {
-                if (isUnix()) {
-                    sh '''
-                        rm -rf ${VENV_DIR}
-                        rm -f database.db
-                    '''
-                } else {
-                    bat '''
-                        if exist %VENV_DIR% rmdir /s /q %VENV_DIR%
-                        if exist database.db del /f database.db
-                    '''
-                }
-            }
-        }
-        
         success {
             echo 'Pipeline completado exitosamente!'
         }
