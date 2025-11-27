@@ -17,7 +17,7 @@ pytest-flask==1.3.0
 
 # Herramientas de análisis de seguridad
 bandit==1.7.5
-safety==2.3.5
+safety==3.7.0
 
 # Calidad de código
 flake8==6.1.0
