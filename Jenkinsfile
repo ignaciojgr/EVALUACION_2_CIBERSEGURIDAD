@@ -83,13 +83,18 @@ pipeline {
                         docker stop flask-app 2>/dev/null || true
                         docker rm flask-app 2>/dev/null || true
                         
-                        # Iniciar aplicación en contenedor con host network
+                        # Obtener el workspace path desde el contenedor de Jenkins
+                        WORKSPACE_PATH=$(docker inspect jenkins --format '{{ range .Mounts }}{{ if eq .Destination "/var/jenkins_home" }}{{ .Source }}{{ end }}{{ end }}')/workspace/pipeline-seguridad
+                        
+                        echo "Workspace path: $WORKSPACE_PATH"
+                        
+                        # Iniciar aplicación en contenedor con volumen correcto
                         docker run -d --name flask-app \
                             --network host \
-                            -v $(pwd):/app \
+                            -v "$WORKSPACE_PATH":/app \
                             -w /app \
                             python:3.11-slim \
-                            sh -c "pip install -q -r requirements.txt && python vulnerable_app.py"
+                            sh -c "ls -la && pip install -q -r requirements.txt && python vulnerable_app.py"
                         
                         # Esperar a que la aplicación inicie
                         echo "Esperando que Flask inicie..."
@@ -111,10 +116,15 @@ pipeline {
                     
                     // Ejecutar ZAP usando Docker con permisos correctos
                     sh '''
+                        # Obtener el workspace path
+                        WORKSPACE_PATH=$(docker inspect jenkins --format '{{ range .Mounts }}{{ if eq .Destination "/var/jenkins_home" }}{{ .Source }}{{ end }}{{ end }}')/workspace/pipeline-seguridad
+                        
+                        # Cambiar permisos del directorio de reportes
+                        chmod -R 777 "$WORKSPACE_PATH/reportes_zap"
+                        
                         docker run --rm \
                             --network host \
-                            -v $(pwd)/reportes_zap:/zap/wrk/:rw \
-                            -u zap \
+                            -v "$WORKSPACE_PATH/reportes_zap":/zap/wrk/:rw \
                             ghcr.io/zaproxy/zaproxy:stable \
                             zap-baseline.py -t http://127.0.0.1:5000 \
                             -r reporte_zap.html \
