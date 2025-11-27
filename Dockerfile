@@ -17,14 +17,22 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Python 3.11
+# Instalar Python 3.11, Java (para ZAP) y wget
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    wget \
+    default-jre \
     && rm -rf /var/lib/apt/lists/*
 
-# Crear enlaces simbólicos
+# Instalar OWASP ZAP
+RUN wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz -O /tmp/zap.tar.gz \
+    && tar -xzf /tmp/zap.tar.gz -C /opt \
+    && rm /tmp/zap.tar.gz \
+    && ln -s /opt/ZAP_2.14.0/zap.sh /usr/local/bin/zap.sh
+
+# Crear enlaces simbólicos de Python
 RUN ln -sf /usr/bin/python3 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
 
