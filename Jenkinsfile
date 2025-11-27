@@ -71,46 +71,61 @@ pipeline {
                 unstash 'database'
                 
                 script {
-                    // Crear directorio para reportes
-                    sh 'mkdir -p reportes_zap'
+                    // Crear directorio para reportes con permisos correctos
+                    sh '''
+                        mkdir -p reportes_zap
+                        chmod 777 reportes_zap
+                    '''
                     
-                    // Iniciar la aplicación Flask en un contenedor Docker
+                    // Iniciar la aplicación Flask en un contenedor Docker con red compartida
                     sh '''
                         # Detener cualquier contenedor previo
                         docker stop flask-app 2>/dev/null || true
                         docker rm flask-app 2>/dev/null || true
                         
-                        # Iniciar aplicación en contenedor
+                        # Iniciar aplicación en contenedor con host network
                         docker run -d --name flask-app \
-                            -p 5000:5000 \
+                            --network host \
                             -v $(pwd):/app \
                             -w /app \
                             python:3.11-slim \
                             sh -c "pip install -q -r requirements.txt && python vulnerable_app.py"
                         
                         # Esperar a que la aplicación inicie
-                        sleep 10
-                        echo "Aplicación Flask iniciada en contenedor"
+                        echo "Esperando que Flask inicie..."
+                        sleep 15
+                        
+                        # Verificar múltiples veces
+                        for i in 1 2 3 4 5; do
+                            if curl -f http://localhost:5000/ 2>/dev/null; then
+                                echo "Flask está respondiendo"
+                                break
+                            fi
+                            echo "Intento $i/5 - esperando..."
+                            sleep 3
+                        done
                     '''
                     
-                    // Verificar que la aplicación esté corriendo
-                    sh '''
-                        curl -f http://localhost:5000/ || echo "Advertencia: La aplicación puede no estar disponible"
-                    '''
+                    // Mostrar logs de Flask para debug
+                    sh 'docker logs flask-app || true'
                     
-                    // Ejecutar ZAP usando Docker
+                    // Ejecutar ZAP usando Docker con permisos correctos
                     sh '''
-                        docker run --rm --network host \
+                        docker run --rm \
+                            --network host \
                             -v $(pwd)/reportes_zap:/zap/wrk/:rw \
-                            -t ghcr.io/zaproxy/zaproxy:stable \
-                            zap-baseline.py -t http://localhost:5000 \
+                            -u zap \
+                            ghcr.io/zaproxy/zaproxy:stable \
+                            zap-baseline.py -t http://127.0.0.1:5000 \
                             -r reporte_zap.html \
                             -J reporte_zap.json \
-                            -w reporte_zap.md || true
+                            -w reporte_zap.md \
+                            -I || true
                     '''
                     
                     // Detener contenedor de Flask
                     sh '''
+                        docker logs flask-app
                         docker stop flask-app 2>/dev/null || true
                         docker rm flask-app 2>/dev/null || true
                     '''
