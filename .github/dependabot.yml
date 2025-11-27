@@ -40,12 +40,6 @@ updates:
     
     # Agrupar actualizaciones por tipo
     groups:
-      security-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "security"
-      
       production-dependencies:
         patterns:
           - "flask"
