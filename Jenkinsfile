@@ -62,12 +62,8 @@ pipeline {
         }
         
         stage('Pruebas de Seguridad - OWASP ZAP') {
-            agent {
-                docker { 
-                    image 'python:3.11-slim'
-                    args '-u root:root -p 5000:5000'
-                }
-            }
+            agent any // Usar el nodo principal de Jenkins que tiene Docker
+            
             steps {
                 echo 'Iniciando pruebas de seguridad con OWASP ZAP...'
                 
@@ -78,18 +74,27 @@ pipeline {
                     // Crear directorio para reportes
                     sh 'mkdir -p reportes_zap'
                     
-                    // Iniciar la aplicación en background
+                    // Iniciar la aplicación Flask en un contenedor Docker
                     sh '''
-                        pip install --upgrade pip
-                        pip install -r requirements.txt
-                        nohup python vulnerable_app.py > app.log 2>&1 &
-                        sleep 5
-                        echo "Aplicación Flask iniciada"
+                        # Detener cualquier contenedor previo
+                        docker stop flask-app 2>/dev/null || true
+                        docker rm flask-app 2>/dev/null || true
+                        
+                        # Iniciar aplicación en contenedor
+                        docker run -d --name flask-app \
+                            -p 5000:5000 \
+                            -v $(pwd):/app \
+                            -w /app \
+                            python:3.11-slim \
+                            sh -c "pip install -q -r requirements.txt && python vulnerable_app.py"
+                        
+                        # Esperar a que la aplicación inicie
+                        sleep 10
+                        echo "Aplicación Flask iniciada en contenedor"
                     '''
                     
                     // Verificar que la aplicación esté corriendo
                     sh '''
-                        apt-get update && apt-get install -y curl
                         curl -f http://localhost:5000/ || echo "Advertencia: La aplicación puede no estar disponible"
                     '''
                     
@@ -102,6 +107,12 @@ pipeline {
                             -r reporte_zap.html \
                             -J reporte_zap.json \
                             -w reporte_zap.md || true
+                    '''
+                    
+                    // Detener contenedor de Flask
+                    sh '''
+                        docker stop flask-app 2>/dev/null || true
+                        docker rm flask-app 2>/dev/null || true
                     '''
                     
                     echo 'Escaneo de seguridad OWASP ZAP completado'
