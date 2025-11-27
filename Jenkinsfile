@@ -77,18 +77,24 @@ pipeline {
                         chmod -R 777 reportes_zap
                     '''
                     
-                    // 2. Iniciar la aplicación Flask en background
+                    // 2. Iniciar la aplicación Flask en background usando venv
                     echo 'Iniciando aplicación para escaneo...'
                     sh '''
-                        # Instalar dependencias y iniciar app en background
-                        pip3 install -q -r requirements.txt
-                        nohup python3 vulnerable_app.py > app.log 2>&1 &
+                        # Crear entorno virtual (si no existe)
+                        python3 -m venv venv
+                        
+                        # Instalar dependencias usando el pip del venv
+                        # Esto evita el error "externally-managed-environment"
+                        ./venv/bin/pip install -q -r requirements.txt
+                        
+                        # Iniciar la app usando el python del venv
+                        nohup ./venv/bin/python vulnerable_app.py > app.log 2>&1 &
                         
                         echo "Esperando 10 segundos para que la app inicie..."
                         sleep 10
                         
                         # Verificar que la app esté corriendo
-                        curl -f http://localhost:5000/ || echo "Advertencia: App puede no estar lista"
+                        curl -f http://localhost:5000/ && echo "App esta corriendo" || echo "Advertencia: App puede no estar lista"
                     '''
                     
                     // 3. Ejecutar ZAP con permisos de root y network host
@@ -115,8 +121,8 @@ pipeline {
                     
                     // 5. Matar proceso Flask
                     sh '''
-                        pkill -f "python3 vulnerable_app.py" || true
-                        echo "Aplicación Flask detenida"
+                        pkill -f "./venv/bin/python vulnerable_app.py" || true
+                        echo "Aplicacion Flask detenida"
                     '''
                     
                     echo 'Pruebas de seguridad OWASP ZAP completadas'
