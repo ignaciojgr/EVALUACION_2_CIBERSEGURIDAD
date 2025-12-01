@@ -1,7 +1,7 @@
 # Dependencias del Proyecto - Gestor de Tareas
 
 # Flask y dependencias principales
-Flask==3.0.0
+Flask==3.1.2
 Werkzeug==3.0.1
 
 # Seguridad
